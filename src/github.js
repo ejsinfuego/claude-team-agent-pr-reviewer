@@ -4,7 +4,8 @@ export function createGithubClient(token) {
   const octokit = new Octokit({ auth: token });
 
   return {
-    // Returns open, non-draft PRs for "owner/name" as [{ number, headSha }].
+    // Returns open, non-draft PRs for "owner/name" as
+    // [{ number, headSha, baseBranch }].
     async listOpenPrs(repo) {
       const [owner, name] = repo.split("/");
       const prs = await octokit.paginate(octokit.rest.pulls.list, {
@@ -16,7 +17,11 @@ export function createGithubClient(token) {
 
       return prs
         .filter((pr) => !pr.draft)
-        .map((pr) => ({ number: pr.number, headSha: pr.head.sha }));
+        .map((pr) => ({
+          number: pr.number,
+          headSha: pr.head.sha,
+          baseBranch: pr.base.ref,
+        }));
     },
   };
 }
