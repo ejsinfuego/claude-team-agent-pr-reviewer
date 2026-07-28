@@ -16,12 +16,15 @@ function loadConfig(configPath) {
   if (!Number.isFinite(raw.pollIntervalMs) || raw.pollIntervalMs <= 0) {
     throw new Error("config.json must set a positive `pollIntervalMs`");
   }
+  if (typeof raw.targetBranch !== "string" || raw.targetBranch === "") {
+    throw new Error("config.json must set a non-empty `targetBranch`");
+  }
   return raw;
 }
 
-function runReviewScript(repo, prNumber) {
+function runReviewScript(repo, prNumber, headSha) {
   return new Promise((resolve) => {
-    const child = spawn(REVIEW_SCRIPT, [repo, String(prNumber)], {
+    const child = spawn(REVIEW_SCRIPT, [repo, String(prNumber), headSha], {
       stdio: "inherit",
       env: process.env,
     });
@@ -37,7 +40,7 @@ function runReviewScript(repo, prNumber) {
 async function processQueue(queue, store) {
   for (const job of queue) {
     console.log(`Reviewing ${job.repo}#${job.number} @ ${job.headSha}`);
-    const ok = await runReviewScript(job.repo, job.number);
+    const ok = await runReviewScript(job.repo, job.number, job.headSha);
     if (ok) {
       store.markReviewed(job.repo, job.number, job.headSha);
       console.log(`Reviewed ${job.repo}#${job.number}`);
@@ -58,6 +61,8 @@ async function pollOnce(config, github, store) {
       console.error(`Failed to list PRs for ${repo}:`, err.message);
       continue;
     }
+
+    openPrs = openPrs.filter((pr) => pr.baseBranch === config.targetBranch);
 
     if (!store.isBaselined(repo)) {
       store.baseline(repo, openPrs);
