@@ -115,10 +115,13 @@ jq -c '.[]' "$WORKDIR/comments.json" | while IFS= read -r comment; do
         path: .path,
         line: .line,
         body: (
-          if ((.suggestion // "") | length) > 0
-          then .body + "\n\n```suggestion\n" + .suggestion + "\n```"
-          else .body
-          end
+          "🤖 **Claude**: " + .body +
+          (
+            if ((.suggestion // "") | length) > 0
+            then "\n\n```suggestion\n" + .suggestion + "\n```"
+            else ""
+            end
+          )
         )
       }
     ' <<< "$comment" >> "$FILTERED_FILE"
