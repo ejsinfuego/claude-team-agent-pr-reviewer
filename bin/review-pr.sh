@@ -71,8 +71,9 @@ COMMENTS=$(jq -r '
 {
   echo "You are reviewing GitHub pull request #$PR_NUMBER in $REPO."
   echo "Respond with ONLY a JSON array (no markdown fences, no prose) of inline review comments."
-  echo 'Each element must look exactly like: {"path": "<file path>", "line": <line number>, "body": "<comment>"}'
+  echo 'Each element must look exactly like: {"path": "<file path>", "line": <line number>, "body": "<comment>", "suggestion": "<replacement line, or omit this field>"}'
   echo 'The "line" value MUST be copied exactly from one of the "path:line:" annotations shown below — never compute or guess a line number yourself.'
+  echo 'Include "suggestion" ONLY when you have a concrete, literal one-line code replacement for that exact line — the exact code that should replace it, with no diff markers, no line number, and no markdown fences. Omit "suggestion" entirely for feedback that is not a direct line replacement (structural concerns, missing tests, design questions, multi-line fixes).'
   echo "Only comment on lines you have a specific, concrete concern about (bugs, risks, correctness issues, meaningful improvements). Do not repeat points already made in the existing discussion below. Do not leave nitpicks or praise."
   echo "If there is nothing worth flagging, respond with exactly: []"
   echo
@@ -107,7 +108,23 @@ jq -c '.[]' "$WORKDIR/comments.json" | while IFS= read -r comment; do
   path=$(jq -r '.path' <<< "$comment")
   line=$(jq -r '.line' <<< "$comment")
   if grep -qxF -- "$(printf '%s\t%s' "$path" "$line")" "$VALID_LINES_FILE"; then
-    echo "$comment" >> "$FILTERED_FILE"
+    # Fold "suggestion" (if present) into a GitHub suggestion block so it
+    # renders with an Apply/commit button, same as a human or Copilot review.
+    jq -c '
+      {
+        path: .path,
+        line: .line,
+        body: (
+          "🤖 **Claude**: " + .body +
+          (
+            if ((.suggestion // "") | length) > 0
+            then "\n\n```suggestion\n" + .suggestion + "\n```"
+            else ""
+            end
+          )
+        )
+      }
+    ' <<< "$comment" >> "$FILTERED_FILE"
   else
     echo "Dropping comment on non-diff line $path:$line for $REPO#$PR_NUMBER" >&2
   fi
