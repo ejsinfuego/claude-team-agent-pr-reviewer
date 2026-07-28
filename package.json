@@ -1,0 +1,28 @@
+{
+  "name": "claude-team-agent-reviewer",
+  "version": "1.0.0",
+  "description": "Polls configured GitHub repos and has Claude review new/updated pull requests.",
+  "main": "src/poller.js",
+  "type": "module",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "start": "node src/poller.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ejsinfuego/claude-team-agent-pr-reviewer.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/ejsinfuego/claude-team-agent-pr-reviewer/issues"
+  },
+  "homepage": "https://github.com/ejsinfuego/claude-team-agent-pr-reviewer#readme",
+  "dependencies": {
+    "@octokit/rest": "^22.0.1",
+    "better-sqlite3": "^9.6.0"
+  }
+}

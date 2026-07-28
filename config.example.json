@@ -1,0 +1,4 @@
+{
+  "pollIntervalMs": 300000,
+  "repos": ["owner/repo-one", "owner/repo-two"]
+}
