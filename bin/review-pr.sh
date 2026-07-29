@@ -68,13 +68,22 @@ COMMENTS=$(jq -r '
   end
 ' <<< "$VIEW_JSON")
 
+# Inline comments from earlier reviews on this PR (across all past Head SHAs),
+# so Claude doesn't re-flag an issue it already raised last time.
+PAST_REVIEW_COMMENTS_JSON=$(gh api "repos/$REPO/pulls/$PR_NUMBER/comments" --paginate)
+PAST_REVIEW_COMMENTS=$(jq -r '
+  if length == 0 then "(none)"
+  else (map("- " + .path + ":" + ((.line // .original_line) | tostring) + ": " + .body) | join("\n"))
+  end
+' <<< "$PAST_REVIEW_COMMENTS_JSON")
+
 {
   echo "You are reviewing GitHub pull request #$PR_NUMBER in $REPO."
   echo "Respond with ONLY a JSON array (no markdown fences, no prose) of inline review comments."
   echo 'Each element must look exactly like: {"path": "<file path>", "line": <line number>, "body": "<comment>", "suggestion": "<replacement line, or omit this field>"}'
   echo 'The "line" value MUST be copied exactly from one of the "path:line:" annotations shown below — never compute or guess a line number yourself.'
   echo 'Include "suggestion" ONLY when you have a concrete, literal one-line code replacement for that exact line — the exact code that should replace it, with no diff markers, no line number, and no markdown fences. Omit "suggestion" entirely for feedback that is not a direct line replacement (structural concerns, missing tests, design questions, multi-line fixes).'
-  echo "Only comment on lines you have a specific, concrete concern about (bugs, risks, correctness issues, meaningful improvements). Do not repeat points already made in the existing discussion below. Do not leave nitpicks or praise."
+  echo "Only comment on lines you have a specific, concrete concern about (bugs, risks, correctness issues, meaningful improvements). Do not repeat points already made in the existing discussion or already flagged in a previous review below, even if the underlying issue is still present in the diff. Do not leave nitpicks or praise."
   echo "If there is nothing worth flagging, respond with exactly: []"
   echo
   echo "## Title"
@@ -85,6 +94,9 @@ COMMENTS=$(jq -r '
   echo
   echo "## Existing discussion"
   echo "$COMMENTS"
+  echo
+  echo "## Already flagged in a previous review (do not repeat these)"
+  echo "$PAST_REVIEW_COMMENTS"
   echo
   echo "## Diff (annotated with new-file line numbers)"
   echo '```'
