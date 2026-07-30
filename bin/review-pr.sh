@@ -25,7 +25,23 @@ PROMPT_FILE="$WORKDIR/prompt.txt"
 RAW_RESPONSE_FILE="$WORKDIR/response.txt"
 FILTERED_FILE="$WORKDIR/filtered_comments.jsonl"
 
-gh pr diff "$PR_NUMBER" --repo "$REPO" > "$DIFF_FILE"
+# Files that are essentially never worth a code-review comment (lockfiles,
+# generated/minified/vendored output, binary assets) but can be huge — excluded
+# from the diff entirely so they don't burn tokens for no benefit.
+IGNORED_DIFF_PATTERNS=(
+  "package-lock.json" "npm-shrinkwrap.json" "yarn.lock" "pnpm-lock.yaml"
+  "composer.lock" "Gemfile.lock" "Cargo.lock" "poetry.lock"
+  "*.min.js" "*.min.css" "*.map"
+  "dist/*" "dist/**" "build/*" "build/**" "vendor/*" "vendor/**"
+  "*.svg" "*.png" "*.jpg" "*.jpeg" "*.gif" "*.ico"
+  "*.woff" "*.woff2" "*.ttf" "*.eot"
+)
+EXCLUDE_FLAGS=()
+for pattern in "${IGNORED_DIFF_PATTERNS[@]}"; do
+  EXCLUDE_FLAGS+=(--exclude "$pattern")
+done
+
+gh pr diff "$PR_NUMBER" --repo "$REPO" "${EXCLUDE_FLAGS[@]}" > "$DIFF_FILE"
 
 # Annotate the diff with new-file (RIGHT-side) line numbers, so Claude only
 # has to copy a line number rather than compute one (removed lines are
@@ -61,10 +77,19 @@ awk -F'\t' '{ printf "%s:%s: [%s] %s\n", $1, $2, $3, $4 }' "$LINES_FILE" > "$ANN
 VIEW_JSON=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json title,body,comments)
 TITLE=$(jq -r '.title' <<< "$VIEW_JSON")
 BODY=$(jq -r '.body // "(no description)"' <<< "$VIEW_JSON")
-COMMENTS=$(jq -r '
+
+# Capped to the most recent DISCUSSION_LIMIT so a long-running back-and-forth
+# (or CI bot noise) doesn't grow this section's token cost unbounded over a
+# long-lived PR's lifetime — same issue the past-review-comments cap fixes below.
+DISCUSSION_LIMIT=20
+DISCUSSION_TOTAL=$(jq '(.comments // []) | length' <<< "$VIEW_JSON")
+if [[ "$DISCUSSION_TOTAL" -gt "$DISCUSSION_LIMIT" ]]; then
+  echo "Only including the most recent $DISCUSSION_LIMIT of $DISCUSSION_TOTAL PR comments for $REPO#$PR_NUMBER" >&2
+fi
+COMMENTS=$(jq -r --argjson limit "$DISCUSSION_LIMIT" '
   (.comments // []) |
   if length == 0 then "(none)"
-  else (map("- " + .author.login + ": " + .body) | join("\n"))
+  else (.[-$limit:] | map("- " + .author.login + ": " + .body) | join("\n"))
   end
 ' <<< "$VIEW_JSON")
 
