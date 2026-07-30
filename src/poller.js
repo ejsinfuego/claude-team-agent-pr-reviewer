@@ -19,12 +19,15 @@ function loadConfig(configPath) {
   if (typeof raw.targetBranch !== "string" || raw.targetBranch === "") {
     throw new Error("config.json must set a non-empty `targetBranch`");
   }
+  if (typeof raw.model !== "string" || raw.model === "") {
+    throw new Error("config.json must set a non-empty `model` (e.g. \"haiku\", \"sonnet\")");
+  }
   return raw;
 }
 
-function runReviewScript(repo, prNumber, headSha) {
+function runReviewScript(repo, prNumber, headSha, model) {
   return new Promise((resolve) => {
-    const child = spawn(REVIEW_SCRIPT, [repo, String(prNumber), headSha], {
+    const child = spawn(REVIEW_SCRIPT, [repo, String(prNumber), headSha, model], {
       stdio: "inherit",
       env: process.env,
     });
@@ -37,10 +40,10 @@ function runReviewScript(repo, prNumber, headSha) {
 }
 
 // Serial Review Queue: one review at a time, in the order discovered.
-async function processQueue(queue, store) {
+async function processQueue(queue, store, model) {
   for (const job of queue) {
     console.log(`Reviewing ${job.repo}#${job.number} @ ${job.headSha}`);
-    const ok = await runReviewScript(job.repo, job.number, job.headSha);
+    const ok = await runReviewScript(job.repo, job.number, job.headSha, model);
     if (ok) {
       store.markReviewed(job.repo, job.number, job.headSha);
       console.log(`Reviewed ${job.repo}#${job.number}`);
@@ -79,7 +82,7 @@ async function pollOnce(config, github, store) {
     }
   }
 
-  await processQueue(queue, store);
+  await processQueue(queue, store, config.model);
 }
 
 async function main() {

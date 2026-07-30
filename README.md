@@ -12,7 +12,7 @@ Polls configured GitHub repositories and has Claude review new/updated pull requ
 ## Setup
 
 1. `npm install`
-2. `cp config.example.json config.json` and set the repos to watch (`owner/repo` format), a poll interval in milliseconds, and the target base branch PRs must open against (e.g. `develop`).
+2. `cp config.example.json config.json` and set the repos to watch (`owner/repo` format), a poll interval in milliseconds, the target base branch PRs must open against (e.g. `develop`), and the `claude` model to review with (alias like `haiku`/`sonnet`/`opus`, or a full model name).
 3. Export a GitHub token with `repo` scope (used by both the Poller and the Reviewer Script):
    ```
    export GH_TOKEN=ghp_...
@@ -33,9 +33,9 @@ Reviewed state is tracked in a SQLite database at `./data/tracking.db` (override
 
 ## Reviewing a single PR manually
 
-The Reviewer Script can be run directly, outside the Poller. It needs the PR's head commit SHA as a third argument:
+The Reviewer Script can be run directly, outside the Poller. It needs the PR's head commit SHA as a third argument, and optionally a model as a fourth (defaults to `haiku` if omitted):
 
 ```
 gh pr view 123 --repo owner/repo --json headRefOid -q .headRefOid
-bin/review-pr.sh owner/repo 123 <head-sha>
+bin/review-pr.sh owner/repo 123 <head-sha> [model]
 ```

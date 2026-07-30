@@ -2,17 +2,18 @@
 # Reviewer Script: performs one Review end-to-end for a single PR.
 # Posts inline comments only (no summary body); if Claude finds nothing
 # worth flagging, no Review is posted at all.
-# Usage: review-pr.sh <owner/repo> <pr-number> <head-sha>
+# Usage: review-pr.sh <owner/repo> <pr-number> <head-sha> [model]
 set -euo pipefail
 
-if [[ $# -ne 3 ]]; then
-  echo "Usage: $0 <owner/repo> <pr-number> <head-sha>" >&2
+if [[ $# -lt 3 || $# -gt 4 ]]; then
+  echo "Usage: $0 <owner/repo> <pr-number> <head-sha> [model]" >&2
   exit 1
 fi
 
 REPO="$1"
 PR_NUMBER="$2"
 HEAD_SHA="$3"
+MODEL="${4:-haiku}"
 
 WORKDIR=$(mktemp -d)
 trap 'rm -rf "$WORKDIR"' EXIT
@@ -149,7 +150,7 @@ PAST_REVIEW_COMMENTS=$(jq -r --argjson limit "$PAST_COMMENTS_LIMIT" '
   echo '```'
 } > "$PROMPT_FILE"
 
-claude -p --model haiku --allowedTools "" < "$PROMPT_FILE" > "$RAW_RESPONSE_FILE"
+claude -p --model "$MODEL" --allowedTools "" < "$PROMPT_FILE" > "$RAW_RESPONSE_FILE"
 
 # Strip stray markdown fences in case the model added them despite instructions.
 sed -e '/^```/d' "$RAW_RESPONSE_FILE" > "$WORKDIR/comments.json"
