@@ -46,7 +46,10 @@ gh pr diff "$PR_NUMBER" --repo "$REPO" "${EXCLUDE_FLAGS[@]}" > "$DIFF_FILE"
 # Annotate the diff with new-file (RIGHT-side) line numbers, so Claude only
 # has to copy a line number rather than compute one (removed lines are
 # omitted entirely, so there's nothing to hallucinate a number for).
-# Emits "path\tline\tmarker\tcontent" per commentable line.
+# Unchanged context lines are counted (to keep line numbers correct) but not
+# emitted — only added lines are worth commenting on, and skipping context
+# cuts a meaningful chunk of diff tokens out of the prompt.
+# Emits "path\tline\tmarker\tcontent" per added line.
 awk '
   /^\+\+\+ / {
     path = $2
@@ -65,7 +68,6 @@ awk '
   }
   /^-/ { next }
   /^ / {
-    print path "\t" newLine "\t \t" substr($0, 2)
     newLine++
     next
   }
@@ -94,15 +96,19 @@ COMMENTS=$(jq -r --argjson limit "$DISCUSSION_LIMIT" '
 ' <<< "$VIEW_JSON")
 
 # Inline comments from earlier reviews on this PR (across all past Head SHAs),
-# so Claude doesn't re-flag an issue it already raised last time. Capped to
-# the most recent PAST_COMMENTS_LIMIT so token cost doesn't grow unbounded
-# over a long-lived PR's lifetime, and suggestion blocks are stripped since
-# only the point being made (not the old suggested code) matters for dedup.
+# so Claude doesn't re-flag an issue it already raised last time. Scoped down
+# to files still touched by the current diff (a comment on a file no longer
+# part of this PR is irrelevant noise) and capped to the most recent
+# PAST_COMMENTS_LIMIT of those so token cost doesn't grow unbounded over a
+# long-lived PR's lifetime; suggestion blocks are stripped since only the
+# point being made (not the old suggested code) matters for dedup.
 PAST_COMMENTS_LIMIT=50
-PAST_REVIEW_COMMENTS_JSON=$(gh api "repos/$REPO/pulls/$PR_NUMBER/comments" --paginate)
+CURRENT_DIFF_PATHS_JSON=$(cut -f1 "$VALID_LINES_FILE" | sort -u | jq -R -s -c 'split("\n") | map(select(length > 0))')
+PAST_REVIEW_COMMENTS_JSON=$(gh api "repos/$REPO/pulls/$PR_NUMBER/comments" --paginate |
+  jq -c --argjson paths "$CURRENT_DIFF_PATHS_JSON" '[.[] | select(.path as $p | $paths | index($p) != null)]')
 PAST_COMMENTS_TOTAL=$(jq 'length' <<< "$PAST_REVIEW_COMMENTS_JSON")
 if [[ "$PAST_COMMENTS_TOTAL" -gt "$PAST_COMMENTS_LIMIT" ]]; then
-  echo "Only including the most recent $PAST_COMMENTS_LIMIT of $PAST_COMMENTS_TOTAL past review comments for $REPO#$PR_NUMBER" >&2
+  echo "Only including the most recent $PAST_COMMENTS_LIMIT of $PAST_COMMENTS_TOTAL past review comments (on files still in this diff) for $REPO#$PR_NUMBER" >&2
 fi
 PAST_REVIEW_COMMENTS=$(jq -r --argjson limit "$PAST_COMMENTS_LIMIT" '
   if length == 0 then "(none)"
