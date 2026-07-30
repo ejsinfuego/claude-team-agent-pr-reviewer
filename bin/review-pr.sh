@@ -69,11 +69,25 @@ COMMENTS=$(jq -r '
 ' <<< "$VIEW_JSON")
 
 # Inline comments from earlier reviews on this PR (across all past Head SHAs),
-# so Claude doesn't re-flag an issue it already raised last time.
+# so Claude doesn't re-flag an issue it already raised last time. Capped to
+# the most recent PAST_COMMENTS_LIMIT so token cost doesn't grow unbounded
+# over a long-lived PR's lifetime, and suggestion blocks are stripped since
+# only the point being made (not the old suggested code) matters for dedup.
+PAST_COMMENTS_LIMIT=50
 PAST_REVIEW_COMMENTS_JSON=$(gh api "repos/$REPO/pulls/$PR_NUMBER/comments" --paginate)
-PAST_REVIEW_COMMENTS=$(jq -r '
+PAST_COMMENTS_TOTAL=$(jq 'length' <<< "$PAST_REVIEW_COMMENTS_JSON")
+if [[ "$PAST_COMMENTS_TOTAL" -gt "$PAST_COMMENTS_LIMIT" ]]; then
+  echo "Only including the most recent $PAST_COMMENTS_LIMIT of $PAST_COMMENTS_TOTAL past review comments for $REPO#$PR_NUMBER" >&2
+fi
+PAST_REVIEW_COMMENTS=$(jq -r --argjson limit "$PAST_COMMENTS_LIMIT" '
   if length == 0 then "(none)"
-  else (map("- " + .path + ":" + ((.line // .original_line) | tostring) + ": " + .body) | join("\n"))
+  else (
+    sort_by(.id) | .[-$limit:] |
+    map(
+      "- " + .path + ":" + ((.line // .original_line) | tostring) + ": " +
+      (.body | sub("\n\n```suggestion.*"; ""; "m"))
+    ) | join("\n")
+  )
   end
 ' <<< "$PAST_REVIEW_COMMENTS_JSON")
 
@@ -104,7 +118,7 @@ PAST_REVIEW_COMMENTS=$(jq -r '
   echo '```'
 } > "$PROMPT_FILE"
 
-claude -p --allowedTools "" < "$PROMPT_FILE" > "$RAW_RESPONSE_FILE"
+claude -p --model haiku --allowedTools "" < "$PROMPT_FILE" > "$RAW_RESPONSE_FILE"
 
 # Strip stray markdown fences in case the model added them despite instructions.
 sed -e '/^```/d' "$RAW_RESPONSE_FILE" > "$WORKDIR/comments.json"
