@@ -1,5 +1,6 @@
 {
   "pollIntervalMs": 300000,
   "targetBranch": "develop",
+  "model": "haiku",
   "repos": ["owner/repo-one", "owner/repo-two"]
 }
